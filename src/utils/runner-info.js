@@ -14,8 +14,45 @@
  */
 
 const os = require("os");
+const { execFileSync } = require("child_process");
 
 const PREFIX = "_DOTENVRTDB_RUNNER_";
+
+function runGit(args) {
+  try {
+    return execFileSync("git", args, {
+      cwd: process.cwd(),
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "ignore"],
+    }).trim();
+  } catch {
+    return "";
+  }
+}
+
+function formatCommitAt(commitDateIso) {
+  const match = `${commitDateIso || ""}`.match(
+    /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})/,
+  );
+  if (!match) return "";
+
+  const [, year, month, day, hour, minute] = match;
+  return `1.${year.slice(-2)}.${month}${day}.${hour}${minute}`;
+}
+
+function collectGitCommitInfo() {
+  const commitId =
+    runGit(["log", "-1", "--format=%H"]) ||
+    process.env.GITHUB_SHA ||
+    process.env.BUILD_SOURCEVERSION ||
+    "";
+  const commitAt = formatCommitAt(runGit(["log", "-1", "--format=%cI"]));
+
+  return {
+    [`${PREFIX}COMMIT_ID`]: commitId,
+    [`${PREFIX}COMMIT_AT`]: commitAt,
+  };
+}
 
 /**
  * Detect host type từ environment variables.
@@ -124,6 +161,8 @@ function collectRunnerInfo() {
   if (hostType === "github") raw = collectGitHubInfo();
   else if (hostType === "azure") raw = collectAzureInfo();
   else raw = collectSelfHostInfo();
+
+  raw = { ...raw, ...collectGitCommitInfo() };
 
   // Chỉ giữ lại key có giá trị, stringify an toàn
   const result = {};
